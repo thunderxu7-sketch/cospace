@@ -1,0 +1,17 @@
+name: cospace
+services:
+  db:
+    image: postgres:16.9-alpine
+    environment:
+      POSTGRES_USER: cospace
+      POSTGRES_PASSWORD: cospace_local_only
+      POSTGRES_DB: cospace
+    ports: ["127.0.0.1:55437:5432"]
+    volumes: ["cospace-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cospace"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  cospace-data:
