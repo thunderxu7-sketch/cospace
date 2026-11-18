@@ -1,0 +1,18 @@
+appId: dev.cospace.mobile
+---
+- scrollUntilVisible:
+    element:
+      id: task-${TASK_ID}
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: task-${TASK_ID}
+- extendedWaitUntil:
+    visible:
+      id: task-status-doing
+    timeout: 15000
+- tapOn:
+    id: task-status-doing
+- tapOn:
+    id: save-task-status
+- takeScreenshot: native-task-status

@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "CoSpace",
+    "slug": "cospace-mobile",
+    "version": "0.1.0",
+    "scheme": "cospace",
+    "platforms": ["ios", "android"],
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F5F7F2",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "./plugins/with-local-networking.cjs"
+    ],
+    "android": {
+      "package": "dev.cospace.mobile",
+      "predictiveBackGestureEnabled": true
+    },
+    "ios": {
+      "bundleIdentifier": "dev.cospace.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    }
+  }
+}

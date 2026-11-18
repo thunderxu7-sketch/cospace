@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@cospace/contracts": ["./packages/contracts/src/index.ts"]
     },
     "noUnusedLocals": true,
     "noUnusedParameters": true
@@ -31,5 +32,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "apps/mobile"]
 }

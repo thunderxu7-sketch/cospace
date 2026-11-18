@@ -1,0 +1,13 @@
+appId: dev.cospace.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: review-receipt
+    timeout: 25000
+- scrollUntilVisible:
+    element:
+      id: task-${TASK_ID}
+    direction: DOWN
+    timeout: 10000
+- takeScreenshot: native-recovered-receipt

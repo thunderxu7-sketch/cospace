@@ -1,0 +1,18 @@
+appId: dev.cospace.mobile
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: pairing-code
+    timeout: 30000
+- tapOn:
+    id: pairing-code
+- inputText: ${PAIR_CODE}
+- hideKeyboard
+- tapOn:
+    id: connect-button
+- extendedWaitUntil:
+    visible:
+      id: tasks-tab
+    timeout: 20000

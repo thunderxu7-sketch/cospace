@@ -1,0 +1,25 @@
+appId: dev.cospace.mobile
+---
+- runFlow: pair-device.yaml
+- extendedWaitUntil:
+    visible:
+      id: review-${RUN_ID}
+    timeout: 20000
+- tapOn:
+    id: review-${RUN_ID}
+- scrollUntilVisible:
+    element:
+      id: show-source
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: show-source
+- extendedWaitUntil:
+    visible:
+      id: review-source-text
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: apply-review
+    direction: DOWN
+    timeout: 10000

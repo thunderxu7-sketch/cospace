@@ -13,14 +13,24 @@ import {
   LoaderCircle,
   RotateCcw,
 } from "lucide-react";
-import { api, readStream } from "@/lib/api";
+import { api, ApiError, readStream } from "@/lib/api";
 import type { DocContext, Operation, Run } from "@/lib/types";
+import type { RunDetail } from "@cospace/contracts";
 const modes = {
   summary: "整理讨论",
   tasks: "提取行动项",
   rewrite: "改写段落",
   schedule: "建议排期",
 };
+const decisions = {
+  apply: { status: "applied", pending: "正在写入工作区…" },
+  reject: { status: "rejected", pending: "正在放弃建议…" },
+  undo: { status: "undone", pending: "正在撤销修改…" },
+};
+type Decision = keyof typeof decisions;
+const finishedDecisions = new Set(
+  Object.values(decisions).map(({ status }) => status),
+);
 export default function AiPanel({
   initialMode,
   model,
@@ -47,11 +57,78 @@ export default function AiPanel({
   const [proposal, setProposal] = useState<Operation | null>(null);
   const [sources, setSources] = useState<{ id: string; text: string }[]>([]);
   const [history, setHistory] = useState<Run[] | null>(null);
+  const [decision, setDecision] = useState<Decision | null>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
+  const hasActionItems = proposal?.type === "create_tasks";
+  useEffect(() => {
+    if (
+      !id ||
+      !hasActionItems ||
+      decision ||
+      !["ready", "applied"].includes(status)
+    )
+      return;
+    let lookup: AbortController | undefined;
+    function refreshStatus() {
+      if (document.visibilityState !== "visible") return;
+      lookup?.abort();
+      const request = new AbortController();
+      lookup = request;
+      void api<RunDetail>(`/runs/${id}`, {
+        cache: "no-store",
+        signal: request.signal,
+      })
+        .then((run) => {
+          if (
+            !request.signal.aborted &&
+            finishedDecisions.has(run.status) &&
+            run.status !== status
+          ) {
+            setStatus(run.status);
+            setError("");
+          }
+        })
+        .catch(() => {});
+    }
+    refreshStatus();
+    window.addEventListener("focus", refreshStatus);
+    document.addEventListener("visibilitychange", refreshStatus);
+    return () => {
+      lookup?.abort();
+      window.removeEventListener("focus", refreshStatus);
+      document.removeEventListener("visibilitychange", refreshStatus);
+    };
+  }, [id, hasActionItems, status, decision]);
+
+  async function decide(action: Decision) {
+    setDecision(action);
+    setError("");
+    try {
+      await api(`/runs/${id}/${action}`, { method: "POST" });
+      setStatus(decisions[action].status);
+      if (action !== "reject") onApplied(mode);
+    } catch (cause) {
+      if (hasActionItems && cause instanceof ApiError && cause.status === 409) {
+        const run = await api<RunDetail>(`/runs/${id}`, {
+          cache: "no-store",
+        }).catch(() => null);
+        if (run && finishedDecisions.has(run.status) && run.status !== status) {
+          setStatus(run.status);
+          return;
+        }
+      }
+      setError(cause instanceof Error ? cause.message : "操作失败，请重试");
+    } finally {
+      setDecision(null);
+    }
+  }
+
   async function generate() {
     setError("");
     setOutput("");
+    setId("");
+    setSources([]);
     setProposal(null);
     setHistory(null);
     setStatus("running");
@@ -150,11 +227,12 @@ export default function AiPanel({
               <button
                 key={key}
                 className={mode === key ? "active" : ""}
-                disabled={status === "running" || status === "applying"}
+                disabled={status === "running" || !!decision}
                 onClick={() => {
                   setMode(key);
                   setStatus("idle");
                   setProposal(null);
+                  setSources([]);
                   setOutput("");
                   setError("");
                 }}
@@ -187,7 +265,7 @@ export default function AiPanel({
         </label>
         <button
           className="primary ai-generate"
-          disabled={readonly || status === "running" || status === "applying"}
+          disabled={readonly || status === "running" || !!decision}
           onClick={generate}
         >
           <Sparkles size={15} />
@@ -278,30 +356,26 @@ export default function AiPanel({
               </p>
             )}
             {status === "ready" && (
-              <button
-                className="primary apply-button"
-                disabled={readonly}
-                onClick={async () => {
-                  setStatus("applying");
-                  setError("");
-                  try {
-                    await api("/runs/" + id + "/apply", { method: "POST" });
-                    setStatus("applied");
-                    onApplied(mode);
-                  } catch (e) {
-                    setStatus("ready");
-                    setError((e as Error).message);
-                  }
-                }}
-              >
-                <Check size={15} />
-                确认应用
-              </button>
+              <>
+                {hasActionItems && (
+                  <p className="ai-explain">
+                    已连接的手机也可以审阅这批行动项。
+                  </p>
+                )}
+                <button
+                  className="primary apply-button"
+                  disabled={readonly || !!decision}
+                  onClick={() => void decide("apply")}
+                >
+                  <Check size={15} />
+                  确认应用
+                </button>
+              </>
             )}
-            {status === "applying" && (
-              <div className="ai-progress">
+            {decision && (
+              <div className="ai-progress" role="status">
                 <LoaderCircle className="spinning" size={16} />
-                正在写入工作区…
+                {decisions[decision].pending}
               </div>
             )}
             {status === "applied" && (
@@ -312,17 +386,8 @@ export default function AiPanel({
                 </div>
                 <button
                   className="text-button"
-                  disabled={readonly}
-                  onClick={async () => {
-                    setError("");
-                    try {
-                      await api("/runs/" + id + "/undo", { method: "POST" });
-                      setStatus("undone");
-                      onApplied(mode);
-                    } catch (e) {
-                      setError((e as Error).message);
-                    }
-                  }}
+                  disabled={readonly || !!decision}
+                  onClick={() => void decide("undo")}
                 >
                   <RotateCcw size={14} />
                   撤销本次修改
@@ -335,14 +400,8 @@ export default function AiPanel({
             {status === "ready" && (
               <button
                 className="text-button"
-                onClick={async () => {
-                  try {
-                    await api("/runs/" + id + "/reject", { method: "POST" });
-                    setStatus("rejected");
-                  } catch (e) {
-                    setError((e as Error).message);
-                  }
-                }}
+                disabled={readonly || !!decision}
+                onClick={() => void decide("reject")}
               >
                 放弃本条建议
               </button>
@@ -374,6 +433,7 @@ export default function AiPanel({
         )}
         <button
           className="history-button"
+          disabled={status === "running" || !!decision}
           onClick={async () => {
             try {
               setHistory(await api("/runs"));
@@ -392,6 +452,7 @@ export default function AiPanel({
             {history.map((run) => (
               <button
                 key={run.id}
+                disabled={status === "running" || !!decision}
                 onClick={() => {
                   setId(run.id);
                   setMode(run.mode);

@@ -41,6 +41,36 @@ npm start
 
 `Ctrl+C` 停止网页、API 和协作进程。`docker compose stop` 停止本项目数据库，数据仍保存在独立卷中。
 
+## React Native 移动端
+
+在网页打开一份文档，通过 AI 工作流提取行动项。点击右上角「连接手机」，在 App 输入配对码。用同一账号在「待确认」核对生成时的原文并确认。其他成员打开的 Web 任务表会自动刷新，手机还能继续更新任务状态。
+
+另开终端，为 Expo App 安装依赖并启动原生开发构建。运行前按上面的步骤启动 CoSpace。
+
+```bash
+npm --prefix apps/mobile ci
+
+# Android SDK、JDK 17、已启动的模拟器或已连接的 USB 设备
+adb reverse tcp:4027 tcp:4027
+npm --prefix apps/mobile run android
+
+# macOS、完整 Xcode、iOS Simulator runtime 和 CocoaPods
+npm --prefix apps/mobile run ios
+```
+
+Android 通过 `adb reverse`，iOS 模拟器通过宿主机回环地址访问本机 API，默认均为 `http://127.0.0.1:4027`。开发构建已安装时，用 `npm --prefix apps/mobile start` 启动 Metro。需要指定 API 地址时可参考 `apps/mobile/.env.example`，本地演示的明文 HTTP 限定于回环地址。
+
+Android 模拟器也可使用匹配 SDK 55 的 Expo Go。启动 Metro 后，在模拟器打开 `exp://127.0.0.1:8081`。
+
+```bash
+adb reverse tcp:4027 tcp:4027
+adb reverse tcp:8081 tcp:8081
+cd apps/mobile
+node scripts/run-native.mjs start --go --localhost
+```
+
+移动端独立锁定 Expo SDK 55 与 React 19.2。Web、移动端和 Fastify 共用 `packages/contracts` 的类型。可用 `npm --prefix apps/mobile run typecheck` 检查移动端类型，用 `npm --prefix apps/mobile run export` 生成 Android 与 iOS 的 JS bundle。
+
 ## 已实现
 
 | 模块         | 可以验证的行为                                                                                                         |
@@ -70,6 +100,8 @@ npm run format:check
 - [架构与取舍](docs/ARCHITECTURE.md)
 - [五分钟演示与岗位对应](docs/DEMO.md)
 - [验证结果与边界](docs/VALIDATION.md)
+- [移动端开发计划](docs/REACT_NATIVE_PLAN.md)
+- [移动端验收与性能复测](docs/MOBILE_VALIDATION.md)
 
 ## 当前范围
 

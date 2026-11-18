@@ -1,6 +1,8 @@
 import Fastify from "fastify";
+import type { FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
+import type { PoolClient } from "pg";
 import { WebSocketServer, WebSocket } from "ws";
 import {
   randomBytes,
@@ -13,9 +15,26 @@ import { pool, sql, initDb } from "./db";
 import { digest, taskPatch, validWindow, overlaps } from "./domain";
 import { collab, readDoc, applyDocument, undoDocument } from "./collab";
 import { generate } from "./ai";
-import type { Member, Operation } from "../src/lib/types";
+import { actionItemRun, registerMobileDataRoutes } from "./mobile-data";
+import {
+  fail,
+  member,
+  registerMobileSessionRoutes,
+  registerRequestAuth,
+  session,
+} from "./session";
+import type {
+  ApplyRunResponse,
+  CreateTasksResult,
+  Member,
+  Operation,
+  Task,
+} from "../packages/contracts/src/index";
 
 const origin = process.env.APP_ORIGIN || "http://127.0.0.1:3027";
+const mobileTaskPatch = taskPatch
+  .pick({ status: true, version: true })
+  .required();
 const app = Fastify({ logger: false, bodyLimit: 3 * 1024 * 1024 });
 await app.register(cookie);
 await app.register(rateLimit, { max: 600, timeWindow: 60000 });
@@ -36,36 +55,28 @@ function presence() {
     users: [...new Set([...sockets.values()].map((u) => u.id))],
   });
 }
-async function session(token?: string): Promise<Member | undefined> {
-  if (!token) return;
-  return (
-    await sql(
-      "SELECT u.id,u.name,u.role,u.color FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=$1 AND s.expires_at>now()",
-      [digest(token)],
-    )
-  )[0];
-}
-function fail(message: string, statusCode = 400): never {
-  throw Object.assign(new Error(message), { statusCode });
-}
-async function event(kind: string, payload: unknown) {
-  const [e] = await sql(
+async function recordEvent(
+  kind: string,
+  payload: unknown,
+  db: Pick<PoolClient, "query"> = pool,
+) {
+  const {
+    rows: [row],
+  } = await db.query<{ id: string; kind: string; payload: unknown }>(
     "INSERT INTO events(kind,payload) VALUES($1,$2) RETURNING id,kind,payload",
     [kind, JSON.stringify(payload)],
   );
-  broadcast({ ...e, id: Number(e.id) });
+  return { ...row, id: Number(row.id) };
 }
-const write = (req: any) => {
-  if (req.user.role === "viewer") fail("当前身份仅可查看", 403);
-};
-app.decorateRequest("user", null);
-app.addHook("preHandler", async (req: any) => {
-  if (req.method !== "GET" && req.headers.origin !== origin)
-    fail("来源校验失败", 403);
-  if (req.url === "/api/login" || req.url === "/api/health") return;
-  req.user = await session(req.cookies.cs_session);
-  if (!req.user) fail("请先登录", 401);
-});
+async function event(kind: string, payload: unknown) {
+  broadcast(await recordEvent(kind, payload));
+}
+function write(req: FastifyRequest): Member {
+  const user = member(req);
+  if (user.role === "viewer") fail("当前身份仅可查看", 403);
+  return user;
+}
+registerRequestAuth(app, origin);
 app.setErrorHandler((error: any, req, reply) => {
   if (error instanceof z.ZodError)
     return reply.code(400).send({
@@ -81,6 +92,8 @@ app.setErrorHandler((error: any, req, reply) => {
   });
 });
 app.get("/api/health", async () => ({ ok: true }));
+registerMobileSessionRoutes(app);
+registerMobileDataRoutes(app);
 app.post(
   "/api/login",
   { config: { rateLimit: { max: 30, timeWindow: 60000 } } },
@@ -175,6 +188,8 @@ app.post("/api/tasks", async (req: any) => {
     })
     .parse(req.body);
   const c = await pool.connect();
+  let task: Task;
+  let change: Awaited<ReturnType<typeof recordEvent>>;
   try {
     await c.query("BEGIN");
     await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -188,71 +203,81 @@ app.post("/api/tasks", async (req: any) => {
       await c.query("COMMIT");
       return old.rows[0].result;
     }
-    const {
+    ({
       rows: [task],
-    } = await c.query(
+    } = await c.query<Task>(
       "INSERT INTO tasks(id,title,assignee) VALUES($1,$2,$3) RETURNING *",
       [randomUUID(), b.title, b.assignee],
-    );
+    ));
     await c.query("INSERT INTO mutations VALUES($1,$2,$3)", [
       req.user.id,
       b.clientId,
       JSON.stringify(task),
     ]);
+    change = await recordEvent("tasks", {}, c);
     await c.query("COMMIT");
-    await event("tasks", {});
-    return task;
   } catch (e) {
     await c.query("ROLLBACK");
     throw e;
   } finally {
     c.release();
   }
+  broadcast(change);
+  return task;
 });
-app.patch("/api/tasks/:id", async (req: any) => {
-  write(req);
-  const id = z.string().uuid().parse(req.params.id);
-  const patch = taskPatch.parse(req.body);
-  const c = await pool.connect();
-  try {
-    await c.query("BEGIN");
-    const {
-      rows: [current],
-    } = await c.query("SELECT * FROM tasks WHERE id=$1 FOR UPDATE", [id]);
-    if (!current) fail("任务不存在", 404);
-    if (current.version !== patch.version)
-      throw Object.assign(new Error("任务已由其他人修改，已获取最新内容。"), {
-        statusCode: 409,
-        current,
-      });
-    const next = { ...current, ...patch };
-    if (!validWindow(next.start_at, next.end_at))
-      fail("结束时间必须晚于开始时间");
-    const {
-      rows: [task],
-    } = await c.query(
-      "UPDATE tasks SET title=$2,assignee=$3,status=$4,priority=$5,due_at=$6,start_at=$7,end_at=$8,version=version+1 WHERE id=$1 RETURNING *",
-      [
-        id,
-        next.title,
-        next.assignee,
-        next.status,
-        next.priority,
-        next.due_at,
-        next.start_at,
-        next.end_at,
-      ],
+app.patch(
+  "/api/tasks/:id",
+  { config: { mobileAuth: "allowed" } },
+  async (req) => {
+    write(req);
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    const patch = (req.mobileTokenHash ? mobileTaskPatch : taskPatch).parse(
+      req.body,
     );
-    await c.query("COMMIT");
-    await event("tasks", {});
+    const c = await pool.connect();
+    let task: Task;
+    let change: Awaited<ReturnType<typeof recordEvent>>;
+    try {
+      await c.query("BEGIN");
+      const {
+        rows: [current],
+      } = await c.query("SELECT * FROM tasks WHERE id=$1 FOR UPDATE", [id]);
+      if (!current) fail("任务不存在", 404);
+      if (current.version !== patch.version)
+        throw Object.assign(new Error("任务已由其他人修改，已获取最新内容。"), {
+          statusCode: 409,
+          current,
+        });
+      const next = { ...current, ...patch };
+      if (!validWindow(next.start_at, next.end_at))
+        fail("结束时间必须晚于开始时间");
+      ({
+        rows: [task],
+      } = await c.query<Task>(
+        "UPDATE tasks SET title=$2,assignee=$3,status=$4,priority=$5,due_at=$6,start_at=$7,end_at=$8,version=version+1 WHERE id=$1 RETURNING *",
+        [
+          id,
+          next.title,
+          next.assignee,
+          next.status,
+          next.priority,
+          next.due_at,
+          next.start_at,
+          next.end_at,
+        ],
+      ));
+      change = await recordEvent("tasks", {}, c);
+      await c.query("COMMIT");
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    } finally {
+      c.release();
+    }
+    broadcast(change);
     return task;
-  } catch (e) {
-    await c.query("ROLLBACK");
-    throw e;
-  } finally {
-    c.release();
-  }
-});
+  },
+);
 app.get("/api/documents/:id/context", async (req: any) =>
   readDoc(z.enum(["launch", "notes"]).parse(req.params.id)),
 );
@@ -330,17 +355,25 @@ app.post("/api/ai/generate", async (req: any, reply) => {
     reply.raw.end();
   }
 });
-app.post("/api/runs/:id/apply", async (req: any) => {
-  write(req);
-  const id = z.string().uuid().parse(req.params.id);
+app.post(
+  "/api/runs/:id/apply",
+  { config: { mobileAuth: "allowed" } },
+  applyRun,
+);
+async function applyRun(req: FastifyRequest): Promise<ApplyRunResponse> {
+  const user = write(req);
+  const { id } = z.object({ id: z.uuid() }).parse(req.params);
   const c = await pool.connect();
+  let result: unknown;
+  let changes: Awaited<ReturnType<typeof recordEvent>>[];
   try {
     await c.query("BEGIN");
     const {
       rows: [run],
     } = await c.query(
-      "SELECT * FROM runs WHERE id=$1 AND user_id=$2 FOR UPDATE",
-      [id, req.user.id],
+      `SELECT * FROM runs WHERE id=$1 AND user_id=$2
+       AND (NOT $3::boolean OR (${actionItemRun})) FOR UPDATE`,
+      [id, user.id, !!req.mobileTokenHash],
     );
     if (!run) fail("操作不存在", 404);
     if (run.status === "applied") {
@@ -349,20 +382,19 @@ app.post("/api/runs/:id/apply", async (req: any) => {
     }
     if (run.status !== "ready") fail("当前建议无法应用", 409);
     const op: Operation = run.proposal;
-    let result: unknown;
     if (op.type === "append_document" || op.type === "replace_paragraph") {
       result = await applyDocument(op, id);
     } else if (op.type === "create_tasks") {
-      const ids = [];
+      const taskIds: string[] = [];
       for (const t of op.tasks!) {
         const tid = randomUUID();
         await c.query(
           "INSERT INTO tasks(id,title,assignee,due_at,source) VALUES($1,$2,$3,$4,$5)",
           [tid, t.title, t.assignee, t.due_at || null, id],
         );
-        ids.push(tid);
+        taskIds.push(tid);
       }
-      result = { taskIds: ids };
+      result = { taskIds } satisfies CreateTasksResult;
     } else {
       const { rows: all } = await c.query(
         "SELECT * FROM tasks ORDER BY id FOR UPDATE",
@@ -400,27 +432,43 @@ app.post("/api/runs/:id/apply", async (req: any) => {
       id,
       JSON.stringify(result),
     ]);
+    changes = [
+      await recordEvent("tasks", {}, c),
+      await recordEvent("document", {}, c),
+    ];
     await c.query("COMMIT");
-    await event("tasks", {});
-    await event("document", {});
-    return { ok: true, result };
   } catch (e) {
     await c.query("ROLLBACK");
     throw e;
   } finally {
     c.release();
   }
-});
-app.post("/api/runs/:id/reject", async (req: any) => {
-  write(req);
-  const id = z.string().uuid().parse(req.params.id);
-  const [run] = await sql(
-    "UPDATE runs SET status='rejected' WHERE id=$1 AND user_id=$2 AND status IN ('ready','rejected') RETURNING id",
-    [id, req.user.id],
-  );
-  if (!run) fail("当前建议无法放弃", 409);
-  return { ok: true };
-});
+  for (const change of changes) broadcast(change);
+  return { ok: true, result };
+}
+app.post(
+  "/api/runs/:id/reject",
+  { config: { mobileAuth: "allowed" } },
+  async (req) => {
+    const user = write(req);
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    const [run] = await sql(
+      `UPDATE runs SET status='rejected' WHERE id=$1 AND user_id=$2
+       AND (NOT $3::boolean OR (${actionItemRun}))
+       AND status IN ('ready','rejected') RETURNING id`,
+      [id, user.id, !!req.mobileTokenHash],
+    );
+    if (run) return { ok: true };
+    if (req.mobileTokenHash) {
+      const [owned] = await sql(
+        `SELECT id FROM runs WHERE id=$1 AND user_id=$2 AND (${actionItemRun})`,
+        [id, user.id],
+      );
+      if (!owned) fail("操作不存在", 404);
+    }
+    fail("当前建议无法放弃", 409);
+  },
+);
 app.post("/api/runs/:id/undo", async (req: any) => {
   write(req);
   const id = z.string().uuid().parse(req.params.id);

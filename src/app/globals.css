@@ -475,6 +475,66 @@ small {
 .ai-toggle.active {
   background: #e8f1e8;
 }
+.device-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pairing-dialog {
+  width: min(390px, calc(100vw - 36px));
+  padding: 22px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 60px #18241b30;
+}
+.pairing-dialog::backdrop {
+  background: #1c2d2360;
+  backdrop-filter: blur(3px);
+}
+.pairing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.pairing-heading h2 {
+  font-size: 17px;
+}
+.pairing-dialog > p {
+  font-size: 13px;
+  color: var(--muted);
+}
+.pairing-dialog > [role="status"],
+.pairing-dialog > [role="alert"],
+.pairing-dialog > .primary {
+  margin-top: 14px;
+}
+.pairing-dialog > [role="alert"] {
+  color: #aa433a;
+}
+.pairing-code-block {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  margin-top: 17px;
+  padding: 15px;
+  border-radius: 8px;
+  background: var(--pale);
+  color: var(--green);
+}
+.pairing-code-block code {
+  font-size: clamp(19px, 6vw, 26px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
 .project-header {
   padding: 28px 30px 21px;
   display: flex;
@@ -2019,6 +2079,9 @@ small {
     gap: 6px;
   }
   .top-actions .avatar-stack {
+    display: none;
+  }
+  .device-button span {
     display: none;
   }
   .ai-toggle {

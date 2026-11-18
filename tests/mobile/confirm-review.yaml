@@ -1,0 +1,10 @@
+appId: dev.cospace.mobile
+---
+- runFlow: pair-and-review.yaml
+- tapOn:
+    id: apply-review
+- extendedWaitUntil:
+    visible:
+      id: review-receipt
+    timeout: 15000
+- takeScreenshot: native-receipt

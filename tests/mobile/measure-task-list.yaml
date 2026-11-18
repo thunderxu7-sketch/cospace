@@ -1,0 +1,18 @@
+appId: dev.cospace.mobile
+---
+- runFlow: pair-device.yaml
+- repeat:
+    times: 30
+    commands:
+      - stopApp
+      - launchApp
+      - extendedWaitUntil:
+          visible:
+            id: tasks-tab
+          timeout: 20000
+      - tapOn:
+          id: tasks-tab
+      - extendedWaitUntil:
+          visible:
+            id: task-${FIRST_TASK_ID}
+          timeout: 10000

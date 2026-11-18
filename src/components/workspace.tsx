@@ -26,6 +26,7 @@ import type { Workspace, Task, View, DocContext } from "@/lib/types";
 import Chat from "./chat";
 import Tasks from "./tasks";
 import AiPanel from "./ai-panel";
+import MobilePairing from "./mobile-pairing";
 const Editor = dynamic(() => import("./editor"), {
   ssr: false,
   loading: () => <Loading text="正在打开协作文档…" />,
@@ -334,6 +335,7 @@ export default function WorkspaceApp() {
                   <Avatar key={m.id} name={m.name} color={m.color} small />
                 ))}
             </div>
+            <MobilePairing key={data.user.id} name={data.user.name} />
             <button
               className={"ai-toggle " + (ai ? "active" : "")}
               onClick={() =>
