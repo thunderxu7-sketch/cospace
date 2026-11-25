@@ -5,6 +5,8 @@ import { z } from "zod";
 import { appOrigin, demoWorkspace, pilot } from "./config";
 import { pool, sql } from "./db";
 import { digest } from "./domain";
+import { emailConfig, deliverEmail } from "./email-delivery";
+export { emailConfig } from "./email-delivery";
 import { fail, member, newSession, setSession } from "./session";
 
 type Role = "owner" | "editor" | "viewer";
@@ -28,25 +30,6 @@ const linkToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const anonymous = {
   config: { publicAuth: true, rateLimit: { max: 10, timeWindow: "1 minute" } },
 };
-
-export function emailConfig() {
-  const apiKey = process.env.COSPACE_EMAIL_API_KEY;
-  const from = process.env.COSPACE_EMAIL_FROM;
-  const endpoint = new URL(
-    process.env.COSPACE_EMAIL_API_URL || "https://api.resend.com/emails",
-  );
-  const local = ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname);
-  if (
-    !apiKey ||
-    !from ||
-    (endpoint.protocol !== "https:" &&
-      !(local && endpoint.protocol === "http:"))
-  )
-    throw new Error(
-      "Pilot mode requires COSPACE_EMAIL_API_KEY, COSPACE_EMAIL_FROM and an HTTPS email endpoint.",
-    );
-  return { apiKey, from, endpoint };
-}
 
 async function transaction<T>(use: (db: PoolClient) => Promise<T>) {
   const db = await pool.connect();
@@ -93,31 +76,19 @@ async function issueLink(
 }
 
 async function sendLink(link: Awaited<ReturnType<typeof issueLink>>) {
-  const { apiKey, from, endpoint } = emailConfig();
+  const config = emailConfig();
   const invitation = link.purpose === "invite";
   const url = new URL("/", appOrigin);
   url.hash = new URLSearchParams({ [link.purpose]: link.token }).toString();
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(10_000),
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-        "Idempotency-Key": link.id,
-      },
-      body: JSON.stringify({
-        from,
-        to: [link.email],
-        subject: invitation ? "加入 CoSpace 工作区" : "登录 CoSpace",
-        text: invitation
-          ? `你收到了一份 CoSpace 工作区邀请，有效期为 48 小时。打开链接后确认加入。\n\n${url.href}`
-          : `打开链接并确认登录 CoSpace。此链接 15 分钟内有效，只能使用一次。\n\n${url.href}`,
-      }),
+    await deliverEmail(config, {
+      id: link.id,
+      to: link.email,
+      subject: invitation ? "加入 CoSpace 工作区" : "登录 CoSpace",
+      text: invitation
+        ? `你收到了一份 CoSpace 工作区邀请，有效期为 48 小时。打开链接后确认加入。\n\n${url.href}`
+        : `打开链接并确认登录 CoSpace。此链接 15 分钟内有效，只能使用一次。\n\n${url.href}`,
     });
-    if (!response.ok)
-      throw new Error("Email provider did not accept the message");
   } catch {
     await sql(
       "UPDATE email_links SET revoked_at=now() WHERE id=$1 AND used_at IS NULL",

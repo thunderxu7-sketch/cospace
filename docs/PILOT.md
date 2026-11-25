@@ -45,6 +45,8 @@ docker compose --env-file .env.pilot -f deploy/compose.pilot.yaml exec app \
 
 在 Render 中配置托管 PostgreSQL 的 `DATABASE_URL`（启用 TLS）、已验证的 `COSPACE_EMAIL_FROM`、`COSPACE_EMAIL_API_KEY` 和 `COSPACE_GROQ_API_KEY`。试用版启用 Groq 时默认使用 `openai/gpt-oss-20b`。文档原文会发送给 Groq 进行行动项提取。从可信终端使用同一份数据库和邮件配置，另加 `COSPACE_MODE=pilot` 和公网 `APP_ORIGIN`，运行 `npm run pilot:bootstrap` 创建工作区。
 
+Render 免费试用模板使用 MailerSend 的试用发件域名。选择 Sandbox，使用控制台分配的域名，将该域名下的纯邮箱地址填入 `COSPACE_EMAIL_FROM`，发送令牌填入 `COSPACE_EMAIL_API_KEY`。运行 `pilot:bootstrap` 的终端也须配置同一地址、令牌和 `COSPACE_EMAIL_API_URL=https://api.mailersend.com/v1/email`。审核前的两个收件人名额用于独立的管理员和成员测试邮箱，审核通过后再邀请团队。使用 Resend 已验证域名时，把服务和引导终端的地址都设置为 `https://api.resend.com/emails`。[MailerSend Sandbox 规则](https://www.mailersend.com/help/sandbox-mode-and-the-professional-trial)
+
 ## 两账号与两工作区验收
 
 准备一个空的临时 PostgreSQL 数据库，以及 Playwright Chromium，运行以下命令。测试会执行迁移并创建两组工作区数据。测试邮箱接收服务监听回环地址。

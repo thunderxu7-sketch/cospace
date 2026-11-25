@@ -11,6 +11,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: COSPACE_EMAIL_API_URL
+        value: https://api.mailersend.com/v1/email
       - key: COSPACE_EMAIL_FROM
         sync: false
       - key: COSPACE_EMAIL_API_KEY

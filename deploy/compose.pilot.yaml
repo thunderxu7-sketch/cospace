@@ -12,7 +12,8 @@ services:
       APP_ORIGIN: https://${COSPACE_PUBLIC_HOST:?Set the CoSpace hostname}
       DATABASE_URL: postgresql://cospace:${COSPACE_POSTGRES_PASSWORD:?Set the pilot database password}@db:5432/cospace
       COSPACE_EMAIL_FROM: ${COSPACE_EMAIL_FROM:?Set the verified sender}
-      COSPACE_EMAIL_API_KEY: ${COSPACE_EMAIL_API_KEY:?Set the Resend sending key}
+      COSPACE_EMAIL_API_KEY: ${COSPACE_EMAIL_API_KEY:?Set the email sending key}
+      COSPACE_EMAIL_API_URL: ${COSPACE_EMAIL_API_URL:-https://api.resend.com/emails}
       OLLAMA_URL: ${OLLAMA_URL:?Set an Ollama service reachable from the container}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:14b}
     ports:
