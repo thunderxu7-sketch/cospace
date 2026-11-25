@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-export const digest = (value: string) =>
+export const digest = (value: string | Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 export const taskPatch = z
   .object({
     version: z.number().int().positive(),
     title: z.string().trim().min(1).max(180).optional(),
-    assignee: z.enum(["lin", "chen", "guest"]).optional(),
+    assignee: z
+      .union([z.uuid(), z.enum(["lin", "chen", "guest"])])
+      .nullable()
+      .optional(),
     status: z.enum(["todo", "doing", "done"]).optional(),
     priority: z.enum(["high", "medium", "low"]).optional(),
     due_at: z.string().datetime({ offset: true }).nullable().optional(),
@@ -21,10 +24,19 @@ export function validWindow(start: string | null, end: string | null) {
   );
 }
 export function overlaps(
-  a: { start_at: string | null; end_at: string | null; assignee: string },
-  b: { start_at: string | null; end_at: string | null; assignee: string },
+  a: {
+    start_at: string | null;
+    end_at: string | null;
+    assignee: string | null;
+  },
+  b: {
+    start_at: string | null;
+    end_at: string | null;
+    assignee: string | null;
+  },
 ) {
   return (
+    !!a.assignee &&
     a.assignee === b.assignee &&
     !!a.start_at &&
     !!a.end_at &&

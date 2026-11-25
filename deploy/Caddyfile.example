@@ -1,0 +1,17 @@
+{$COSPACE_PUBLIC_HOST} {
+	header {
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+	}
+
+	@api path /api/* /ws/events
+	handle @api {
+		reverse_proxy 127.0.0.1:{$COSPACE_API_PORT:4027}
+	}
+	handle /ws/collab {
+		reverse_proxy 127.0.0.1:{$COSPACE_COLLAB_PORT:4028}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:{$COSPACE_WEB_PORT:3027}
+	}
+}

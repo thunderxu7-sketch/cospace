@@ -7,19 +7,22 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
     "dev:web": "next dev --hostname 127.0.0.1 --port 3027",
     "dev:api": "tsx watch server/index.ts",
     "build": "next build",
-    "start": "node scripts/dev.mjs --production",
+    "start": "node --env-file-if-exists=.env.local scripts/dev.mjs --production",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "db:up": "docker compose up -d --wait db",
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "pilot:bootstrap": "node --env-file-if-exists=.env.local --import tsx scripts/bootstrap-workspace.ts",
     "check": "npm run typecheck && npm test && npm run build",
     "test:ai": "node scripts/smoke-ai.mjs && node scripts/smoke-ai-actions.mjs",
     "format": "prettier --write src server tests scripts *.ts *.json",
-    "format:check": "prettier --check src server tests scripts *.ts *.json"
+    "format:check": "prettier --check src server tests scripts *.ts *.json",
+    "test:pilot": "node scripts/test-pilot.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

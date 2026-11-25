@@ -14,8 +14,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { api, ApiError, readStream } from "@/lib/api";
-import type { DocContext, Operation, Run } from "@/lib/types";
-import type { RunDetail } from "@cospace/contracts";
+import type { DocContext, Member, Operation, Run } from "@/lib/types";
+import type { ActionItem, RunDetail } from "@cospace/contracts";
 const modes = {
   summary: "整理讨论",
   tasks: "提取行动项",
@@ -28,6 +28,7 @@ const decisions = {
   undo: { status: "undone", pending: "正在撤销修改…" },
 };
 type Decision = keyof typeof decisions;
+type ReviewItem = ActionItem & { selected: boolean };
 const finishedDecisions = new Set(
   Object.values(decisions).map(({ status }) => status),
 );
@@ -37,6 +38,7 @@ export default function AiPanel({
   context,
   documentId,
   readonly,
+  pilotReview,
   onClose,
   onApplied,
 }: {
@@ -45,6 +47,7 @@ export default function AiPanel({
   context?: DocContext;
   documentId: string;
   readonly: boolean;
+  pilotReview?: { title: string; members: Member[] };
   onClose: () => void;
   onApplied: (mode: string) => void;
 }) {
@@ -55,12 +58,22 @@ export default function AiPanel({
   const [error, setError] = useState("");
   const [id, setId] = useState("");
   const [proposal, setProposal] = useState<Operation | null>(null);
+  const [edits, setEdits] = useState<Record<number, Partial<ReviewItem>>>({});
   const [sources, setSources] = useState<{ id: string; text: string }[]>([]);
   const [history, setHistory] = useState<Run[] | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   const hasActionItems = proposal?.type === "create_tasks";
+  const reviewed = (proposal?.tasks ?? []).map((item, index) => ({
+    ...item,
+    index,
+    selected: true,
+    ...edits[index],
+  }));
+  function editItem(index: number, value: Partial<ReviewItem>) {
+    setEdits((all) => ({ ...all, [index]: { ...all[index], ...value } }));
+  }
   useEffect(() => {
     if (
       !id ||
@@ -105,7 +118,23 @@ export default function AiPanel({
     setDecision(action);
     setError("");
     try {
-      await api(`/runs/${id}/${action}`, { method: "POST" });
+      await api(`/runs/${id}/${action}`, {
+        method: "POST",
+        ...(pilotReview && action === "apply"
+          ? {
+              body: JSON.stringify({
+                tasks: reviewed
+                  .filter((task) => task.selected)
+                  .map(({ index, title, assignee, due_at }) => ({
+                    index,
+                    title,
+                    assignee,
+                    due_at: due_at ?? null,
+                  })),
+              }),
+            }
+          : {}),
+      });
       setStatus(decisions[action].status);
       if (action !== "reject") onApplied(mode);
     } catch (cause) {
@@ -130,6 +159,7 @@ export default function AiPanel({
     setId("");
     setSources([]);
     setProposal(null);
+    setEdits({});
     setHistory(null);
     setStatus("running");
     const abort = new AbortController();
@@ -142,6 +172,7 @@ export default function AiPanel({
         body: JSON.stringify({
           mode,
           documentId,
+          ...(pilotReview ? { documentRevision: context?.revision } : {}),
           prompt,
           ...(mode === "rewrite"
             ? {
@@ -210,18 +241,21 @@ export default function AiPanel({
           <span className="eyebrow">当前上下文</span>
           <p>
             <FileText size={14} />
-            {mode === "summary"
-              ? "发布讨论 · 最近 20 条消息"
-              : mode === "schedule"
-                ? "团队行动项 · 未完成任务"
-                : documentId === "notes"
-                  ? "团队随手记"
-                  : "CoSpace 1.0 发布方案"}
+            {pilotReview
+              ? pilotReview.title
+              : mode === "summary"
+                ? "发布讨论 · 最近 20 条消息"
+                : mode === "schedule"
+                  ? "团队行动项 · 未完成任务"
+                  : documentId === "notes"
+                    ? "团队随手记"
+                    : "CoSpace 1.0 发布方案"}
           </p>
         </div>
         <h3>想从哪里开始？</h3>
         <div className="ai-modes">
           {Object.entries(modes)
+            .filter(([key]) => !pilotReview || key === "tasks")
             .filter(([key]) => key !== "rewrite" || context?.selectedText)
             .map(([key, label]) => (
               <button
@@ -312,20 +346,101 @@ export default function AiPanel({
                   ? "拟调整排期"
                   : "拟修改文档"}
             </div>
-            {proposal.tasks?.map((t, i) => (
-              <div className="proposal-task" key={i}>
-                <ListChecks size={15} />
-                <div>
-                  <strong>{t.title}</strong>
-                  <small>
-                    {t.assignee === "lin" ? "林知夏" : "陈屿"} ·{" "}
-                    {t.due_at
-                      ? new Date(t.due_at).toLocaleDateString("zh-CN")
-                      : "未指定截止日期"}
-                  </small>
-                </div>
-              </div>
-            ))}
+            {pilotReview && hasActionItems && !reviewed.length && (
+              <p>没有找到明确的行动项。</p>
+            )}
+            {pilotReview && status === "ready"
+              ? reviewed.map((item) => (
+                  <div className="proposal-task" key={item.index}>
+                    <div className="pilot-review">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={item.selected}
+                          disabled={!!decision}
+                          onChange={(event) =>
+                            editItem(item.index, {
+                              selected: event.target.checked,
+                            })
+                          }
+                        />
+                        采用第 {item.index + 1} 条
+                      </label>
+                      <label>
+                        行动项名称
+                        <input
+                          aria-label={`行动项名称 ${item.index + 1}`}
+                          value={item.title}
+                          maxLength={180}
+                          disabled={!item.selected || !!decision}
+                          onChange={(event) =>
+                            editItem(item.index, { title: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        负责人
+                        <select
+                          aria-label={`行动项负责人 ${item.index + 1}`}
+                          value={item.assignee ?? ""}
+                          disabled={!item.selected || !!decision}
+                          onChange={(event) =>
+                            editItem(item.index, {
+                              assignee: event.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">未分配</option>
+                          {pilotReview.members
+                            .filter((person) => person.role !== "viewer")
+                            .map((person) => (
+                              <option value={person.id} key={person.id}>
+                                {person.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        截止日期
+                        <input
+                          type="date"
+                          aria-label={`行动项截止日期 ${item.index + 1}`}
+                          value={item.due_at?.slice(0, 10) ?? ""}
+                          disabled={!item.selected || !!decision}
+                          onChange={(event) =>
+                            editItem(item.index, {
+                              due_at: event.target.value
+                                ? event.target.value + "T18:00:00+08:00"
+                                : null,
+                            })
+                          }
+                        />
+                      </label>
+                      <blockquote>{item.evidence}</blockquote>
+                    </div>
+                  </div>
+                ))
+              : proposal.tasks?.map((t, i) => (
+                  <div className="proposal-task" key={i}>
+                    <ListChecks size={15} />
+                    <div>
+                      <strong>{t.title}</strong>
+                      <small>
+                        {pilotReview
+                          ? (pilotReview.members.find(
+                              (person) => person.id === t.assignee,
+                            )?.name ?? "未分配")
+                          : t.assignee === "lin"
+                            ? "林知夏"
+                            : "陈屿"}{" "}
+                        ·{" "}
+                        {t.due_at
+                          ? new Date(t.due_at).toLocaleDateString("zh-CN")
+                          : "未指定截止日期"}
+                      </small>
+                    </div>
+                  </div>
+                ))}
             {proposal.schedules?.map((s) => (
               <div className="proposal-task" key={s.id}>
                 <CalendarDays size={15} />
@@ -357,14 +472,22 @@ export default function AiPanel({
             )}
             {status === "ready" && (
               <>
-                {hasActionItems && (
+                {hasActionItems && !pilotReview && (
                   <p className="ai-explain">
                     已连接的手机也可以审阅这批行动项。
                   </p>
                 )}
                 <button
                   className="primary apply-button"
-                  disabled={readonly || !!decision}
+                  disabled={
+                    readonly ||
+                    !!decision ||
+                    (!!pilotReview &&
+                      (!reviewed.some((task) => task.selected) ||
+                        reviewed.some(
+                          (task) => task.selected && !task.title.trim(),
+                        )))
+                  }
                   onClick={() => void decide("apply")}
                 >
                   <Check size={15} />
@@ -418,13 +541,15 @@ export default function AiPanel({
               <div key={s.id}>
                 <strong>
                   [{i + 1}]{" "}
-                  {s.id === "launch"
-                    ? "发布方案"
-                    : s.id === "notes"
-                      ? "团队随手记"
-                      : mode === "schedule"
-                        ? "任务快照"
-                        : "团队消息"}
+                  {pilotReview
+                    ? "来源文档快照"
+                    : s.id === "launch"
+                      ? "发布方案"
+                      : s.id === "notes"
+                        ? "团队随手记"
+                        : mode === "schedule"
+                          ? "任务快照"
+                          : "团队消息"}
                 </strong>
                 <p>{s.text}</p>
               </div>
@@ -458,6 +583,7 @@ export default function AiPanel({
                   setMode(run.mode);
                   setOutput(run.output);
                   setProposal(run.proposal);
+                  setEdits({});
                   setStatus(run.status);
                   setSources(run.sources);
                   setError(run.error || "");

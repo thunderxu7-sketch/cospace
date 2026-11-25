@@ -1,5 +1,6 @@
 import pg from "pg";
 import { randomBytes, scryptSync } from "node:crypto";
+import { migrate } from "./migrate";
 export const pool = new pg.Pool({
   connectionString:
     process.env.DATABASE_URL ||
@@ -13,26 +14,9 @@ export const members = [
   { id: "guest", name: "观察者", color: "#8a7865", role: "viewer" },
 ];
 export async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (id text PRIMARY KEY,name text NOT NULL,color text NOT NULL,role text NOT NULL,password text NOT NULL);
-    CREATE TABLE IF NOT EXISTS sessions (token text PRIMARY KEY,user_id text REFERENCES users(id),expires_at timestamptz NOT NULL);
-    CREATE TABLE IF NOT EXISTS mobile_pairings (code_hash text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),expires_at timestamptz NOT NULL);
-    CREATE TABLE IF NOT EXISTS mobile_sessions (token_hash text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),expires_at timestamptz NOT NULL);
-    CREATE TABLE IF NOT EXISTS tickets (token text PRIMARY KEY,user_id text REFERENCES users(id),expires_at timestamptz NOT NULL);
-    CREATE TABLE IF NOT EXISTS messages (id uuid PRIMARY KEY,body text NOT NULL,user_id text REFERENCES users(id),created_at timestamptz DEFAULT now(),reply_to uuid REFERENCES messages(id),client_id text NOT NULL,UNIQUE(user_id,client_id));
-    CREATE TABLE IF NOT EXISTS documents (id text PRIMARY KEY,title text NOT NULL,state bytea,updated_at timestamptz DEFAULT now());
-    CREATE TABLE IF NOT EXISTS tasks (id uuid PRIMARY KEY,title text NOT NULL,assignee text REFERENCES users(id),status text NOT NULL DEFAULT 'todo',priority text NOT NULL DEFAULT 'medium',due_at timestamptz,start_at timestamptz,end_at timestamptz,version integer NOT NULL DEFAULT 1,source text,created_at timestamptz DEFAULT now());
-    CREATE TABLE IF NOT EXISTS events (id bigserial PRIMARY KEY,kind text NOT NULL,payload jsonb NOT NULL,created_at timestamptz DEFAULT now());
-    CREATE TABLE IF NOT EXISTS runs (id uuid PRIMARY KEY,user_id text REFERENCES users(id),mode text,status text,output text DEFAULT '',proposal jsonb,error text,result jsonb,sources jsonb DEFAULT '[]',created_at timestamptz DEFAULT now());
-    CREATE TABLE IF NOT EXISTS sheets (id text PRIMARY KEY,snapshot jsonb,version integer DEFAULT 1);
-    CREATE TABLE IF NOT EXISTS mutations (user_id text,client_id text,result jsonb,PRIMARY KEY(user_id,client_id));
-    CREATE INDEX IF NOT EXISTS tasks_created_at_id_idx ON tasks (created_at DESC,id DESC);
-    CREATE INDEX IF NOT EXISTS tasks_assignee_created_at_id_idx ON tasks (assignee,created_at DESC,id DESC);
-    CREATE INDEX IF NOT EXISTS runs_pending_action_items_idx ON runs (user_id,created_at DESC,id DESC)
-      WHERE mode='tasks' AND proposal->>'type'='create_tasks' AND status='ready';
-    DELETE FROM mobile_pairings WHERE expires_at<=now();
-    DELETE FROM mobile_sessions WHERE expires_at<=now();
-  `);
+  await migrate(pool);
+  await sql("DELETE FROM mobile_pairings WHERE expires_at<=now()");
+  await sql("DELETE FROM mobile_sessions WHERE expires_at<=now()");
   for (const m of members) {
     const salt = randomBytes(16).toString("hex");
     const password =
@@ -40,6 +24,10 @@ export async function initDb() {
     await sql(
       "INSERT INTO users(id,name,color,role,password) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
       [m.id, m.name, m.color, m.role, password],
+    );
+    await sql(
+      "INSERT INTO workspace_members(workspace_id,user_id,role) VALUES('demo',$1,$2) ON CONFLICT DO NOTHING",
+      [m.id, m.role],
     );
   }
   await sql(
@@ -151,8 +139,4 @@ export async function initDb() {
         "2026-11-20T10:00:00Z",
       ],
     );
-  // Interrupted runs must not remain stuck in a running/applying state after restart.
-  await sql(
-    "UPDATE runs SET status='failed',error='服务已重启，请重新生成建议。' WHERE status='running'",
-  );
 }

@@ -21,12 +21,17 @@ import {
   Users,
   ArrowRight,
 } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, websocketUrl } from "@/lib/api";
 import type { Workspace, Task, View, DocContext } from "@/lib/types";
 import Chat from "./chat";
 import Tasks from "./tasks";
 import AiPanel from "./ai-panel";
 import MobilePairing from "./mobile-pairing";
+import PilotAccess, {
+  emailLinkFromLocation,
+  type EmailLink,
+} from "./pilot-access";
+import PilotWorkspace from "./pilot-workspace";
 const Editor = dynamic(() => import("./editor"), {
   ssr: false,
   loading: () => <Loading text="正在打开协作文档…" />,
@@ -82,6 +87,18 @@ export default function WorkspaceApp() {
     queryKey: ["workspace"],
     queryFn: () => api("/workspace"),
   });
+  const [emailLink, setEmailLink] = useState<EmailLink | null>(null);
+  const { data: authConfig } = useQuery({
+    queryKey: ["auth-config"],
+    queryFn: () => api<{ mode: "demo" | "pilot" }>("/auth/config"),
+    enabled: !data || !!emailLink,
+  });
+  useEffect(() => {
+    const read = () => setEmailLink(emailLinkFromLocation());
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
   const [view, setView] = useState<View>("chat");
   const [online, setOnline] = useState(false);
   const [people, setPeople] = useState<string[]>([]);
@@ -119,7 +136,11 @@ export default function WorkspaceApp() {
     let timer: ReturnType<typeof setTimeout>;
     let delay = 500;
     const connect = () => {
-      ws = new WebSocket(`ws://${window.location.hostname}:4027/events`);
+      ws = new WebSocket(
+        data.mode === "pilot"
+          ? websocketUrl("/ws/events")
+          : `ws://${window.location.hostname}:4027/events`,
+      );
       ws.onopen = () => {
         setOnline(true);
         delay = 500;
@@ -128,14 +149,20 @@ export default function WorkspaceApp() {
         const event = JSON.parse(e.data);
         if (event.kind === "presence") {
           setPeople(event.users);
+          if (data.mode === "pilot")
+            void client.invalidateQueries({ queryKey: ["workspace"] });
           return;
         }
         if (["refresh", "message", "tasks", "document"].includes(event.kind))
           void client.invalidateQueries({ queryKey: ["workspace"] });
       };
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setOnline(false);
         setPeople([]);
+        if (event.code === 4001) {
+          void client.invalidateQueries({ queryKey: ["workspace"] });
+          return;
+        }
         if (!stopped) {
           timer = setTimeout(connect, delay);
           delay = Math.min(delay * 2, 10000);
@@ -149,7 +176,7 @@ export default function WorkspaceApp() {
       clearTimeout(timer);
       ws?.close();
     };
-  }, [data?.user.id, client]);
+  }, [data?.user.id, data?.mode, data?.workspace?.id, client]);
   async function updateTask(task: Task, patch: Partial<Task>) {
     const optimistic = { ...task, ...patch };
     client.setQueryData<Workspace>(["workspace"], (old) =>
@@ -172,14 +199,19 @@ export default function WorkspaceApp() {
       await client.invalidateQueries({ queryKey: ["workspace"] });
     }
   }
+  if (authConfig?.mode === "pilot" && emailLink)
+    return <PilotAccess key={emailLink.token} link={emailLink} />;
+  if (error instanceof ApiError && error.status === 401) {
+    if (!authConfig) return <Loading />;
+    if (authConfig.mode === "pilot") return <PilotAccess link={null} />;
+    return (
+      <Login
+        onLogin={() => client.invalidateQueries({ queryKey: ["workspace"] })}
+      />
+    );
+  }
   if (isPending) return <Loading />;
   if (!data) {
-    if (error instanceof ApiError && error.status === 401)
-      return (
-        <Login
-          onLogin={() => client.invalidateQueries({ queryKey: ["workspace"] })}
-        />
-      );
     return (
       <div className="login-shell">
         <div className="login-card">
@@ -198,6 +230,15 @@ export default function WorkspaceApp() {
       </div>
     );
   }
+  if (data.mode === "pilot")
+    return (
+      <PilotWorkspace
+        key={data.workspace.id + ":" + data.user.id}
+        data={data}
+        online={online}
+        updateTask={updateTask}
+      />
+    );
   const readonly = data.user.role === "viewer";
   const complete = data.tasks.filter((t) => t.status === "done").length;
   return (

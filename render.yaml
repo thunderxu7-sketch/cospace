@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: cospace-pilot
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: pilot-render-free
+    dockerfilePath: ./deploy/Dockerfile
+    healthCheckPath: /api/ready
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: COSPACE_EMAIL_FROM
+        sync: false
+      - key: COSPACE_EMAIL_API_KEY
+        sync: false
+      - key: COSPACE_GROQ_API_KEY
+        sync: false

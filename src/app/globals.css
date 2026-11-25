@@ -2254,3 +2254,142 @@ small {
     transition: none !important;
   }
 }
+
+.pilot-form {
+  display: grid;
+  gap: 12px;
+}
+.pilot-form label,
+.pilot-document-toolbar label {
+  display: grid;
+  gap: 5px;
+}
+.pilot-form input,
+.pilot-form select,
+.pilot-document-toolbar select,
+.pilot-review input:not([type="checkbox"]),
+.pilot-review select {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #a7b8ae;
+  border-radius: 6px;
+  background: #fff;
+  color: #18281f;
+}
+.pilot-workspace {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+.pilot-workspace.has-ai {
+  grid-template-columns: 208px minmax(0, 1fr) 360px;
+}
+.pilot-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 16px;
+  background: #163027;
+  color: #f3f8f4;
+}
+.pilot-sidebar .brand {
+  color: inherit;
+}
+.pilot-sidebar nav,
+.pilot-user {
+  display: grid;
+  gap: 8px;
+}
+.pilot-sidebar nav button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+}
+.pilot-sidebar nav button[aria-current="page"] {
+  background: #315745;
+}
+.pilot-user {
+  margin-top: auto;
+}
+.pilot-user .text-button {
+  color: inherit;
+  justify-self: start;
+}
+.pilot-workspace .topbar h1 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.pilot-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: auto;
+}
+.pilot-document-toolbar {
+  padding: 10px 16px;
+}
+.pilot-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  padding: 12px 16px;
+}
+.pilot-inline-form label {
+  flex: 1 1 150px;
+}
+.pilot-members {
+  padding: 16px;
+}
+.pilot-members ul {
+  padding: 0;
+  list-style: none;
+}
+.pilot-members li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.pilot-content > p {
+  margin: 12px 16px;
+}
+.pilot-review {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+}
+.pilot-review label {
+  display: grid;
+  gap: 3px;
+}
+.pilot-review label:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pilot-review blockquote {
+  margin: 4px 0;
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid #8cab9a;
+}
+@media (max-width: 800px) {
+  .pilot-workspace,
+  .pilot-workspace.has-ai {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pilot-sidebar {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .pilot-sidebar nav {
+    display: flex;
+  }
+  .pilot-user {
+    display: flex;
+    align-items: center;
+  }
+}

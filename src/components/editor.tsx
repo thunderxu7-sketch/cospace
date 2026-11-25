@@ -20,7 +20,7 @@ import {
   FileText,
   Table2,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, websocketUrl } from "@/lib/api";
 import type { Member, DocContext } from "@/lib/types";
 
 export default function DocumentEditor(props: {
@@ -28,43 +28,107 @@ export default function DocumentEditor(props: {
   title: string;
   user: Member;
   onAi: (context: DocContext) => void;
+  pilot?: boolean;
 }) {
   const [resource, setResource] = useState<{
     doc: Y.Doc;
     provider: HocuspocusProvider;
-    cache: IndexeddbPersistence;
   } | null>(null);
   const [status, setStatus] = useState("正在连接");
+  const [revision, setRevision] = useState<number | null>(null);
   useEffect(() => {
     const doc = new Y.Doc();
-    const cache = new IndexeddbPersistence(
-      "cospace-" + props.user.id + "-" + props.id,
-      doc,
-    );
+    const cache = props.pilot
+      ? null
+      : new IndexeddbPersistence(
+          "cospace-" + props.user.id + "-" + props.id,
+          doc,
+        );
+    let active = true;
+    let version = 0;
+    let saved: { savedHash: string; revision: number } | null = null;
+    function checkSaved() {
+      const checkpoint = saved;
+      const check = ++version;
+      setRevision(null);
+      if (!checkpoint) return;
+      void crypto.subtle
+        .digest("SHA-256", new Uint8Array(Y.encodeStateAsUpdate(doc)))
+        .then((bytes) => {
+          if (!active || check !== version) return;
+          const hash = Array.from(new Uint8Array(bytes), (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("");
+          if (hash === checkpoint.savedHash) setRevision(checkpoint.revision);
+        })
+        .catch(() => {});
+    }
+    function acceptSaved(checkpoint: {
+      savedHash?: string;
+      revision?: number;
+    }) {
+      if (
+        !active ||
+        !checkpoint.savedHash ||
+        !Number.isInteger(checkpoint.revision)
+      )
+        return;
+      const revision = checkpoint.revision!;
+      if (saved && saved.revision > revision) return;
+      saved = { savedHash: checkpoint.savedHash, revision };
+      checkSaved();
+    }
+    if (props.pilot) doc.on("update", checkSaved);
     const provider = new HocuspocusProvider({
-      url: `ws://${window.location.hostname}:4028`,
+      url: props.pilot
+        ? websocketUrl("/ws/collab")
+        : `ws://${window.location.hostname}:4028`,
       name: props.id,
       document: doc,
-      token: async () => (await api("/collab/token", { method: "POST" })).token,
+      token: async () =>
+        (
+          await api<{ token: string }>("/collab/token", {
+            method: "POST",
+            ...(props.pilot
+              ? { body: JSON.stringify({ documentId: props.id }) }
+              : {}),
+          })
+        ).token,
       onStatus: ({ status }) =>
         setStatus(
           status === "connected"
             ? "协作已连接"
             : status === "connecting"
               ? "正在重连"
-              : "离线 · 更改保存在本机",
+              : props.pilot
+                ? "离线 · 请保留此页面"
+                : "离线 · 更改保存在本机",
         ),
       onAuthenticationFailed: () => setStatus("协作授权失败，请重新登录"),
+      onSynced: ({ state }) => {
+        if (props.pilot && state) {
+          void api<DocContext>("/documents/" + props.id + "/context")
+            .then(acceptSaved)
+            .catch(() => {});
+        }
+      },
+      onStateless: ({ payload }) => {
+        if (props.pilot) acceptSaved(JSON.parse(payload));
+      },
     });
-    setResource({ doc, provider, cache });
+    setResource({ doc, provider });
     return () => {
+      active = false;
+      doc.off("update", checkSaved);
       provider.destroy();
-      void cache.destroy();
+      void cache?.destroy();
       doc.destroy();
     };
-  }, [props.id, props.user.id]);
+  }, [props.id, props.user.id, props.pilot]);
   if (!resource) return <div className="loading">正在打开文档…</div>;
-  return <EditorBody {...props} {...resource} status={status} />;
+  return (
+    <EditorBody {...props} {...resource} status={status} revision={revision} />
+  );
 }
 function EditorBody({
   id,
@@ -74,6 +138,8 @@ function EditorBody({
   doc,
   provider,
   status,
+  pilot,
+  revision,
 }: {
   id: string;
   title: string;
@@ -82,6 +148,8 @@ function EditorBody({
   doc: Y.Doc;
   provider: HocuspocusProvider;
   status: string;
+  pilot?: boolean;
+  revision: number | null;
 }) {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(provider.synced);
@@ -95,7 +163,7 @@ function EditorBody({
   }, [provider]);
   const editor = useEditor({
     immediatelyRender: false,
-    editable: user.role === "editor",
+    editable: user.role !== "viewer",
     extensions: [
       StarterKit.configure({ undoRedo: false }),
       TableKit.configure({ table: { resizable: true } }),
@@ -120,6 +188,10 @@ function EditorBody({
     if (!editor) return;
     try {
       const context = await api<DocContext>("/documents/" + id + "/context");
+      if (pilot && (revision === null || context.revision !== revision)) {
+        setError("请等文档保存后再提取行动项。");
+        return;
+      }
       if (rewrite) {
         const index = editor.state.selection.$from.index(0);
         const block = editor.state.doc.child(index);
@@ -195,12 +267,20 @@ function EditorBody({
           <strong>{title}</strong>
           <span className="document-sync">
             <i />
-            {status}
+            {pilot && status === "协作已连接"
+              ? revision === null
+                ? "正在保存…"
+                : "已保存"
+              : status}
           </span>
         </div>
         <button
           className="text-button"
-          disabled={user.role === "viewer" || !ready}
+          disabled={
+            user.role === "viewer" ||
+            !ready ||
+            (pilot && (revision === null || status !== "协作已连接"))
+          }
           onClick={() => ai()}
         >
           <Sparkles size={14} />
@@ -221,14 +301,16 @@ function EditorBody({
           </button>
         ))}
         <span className="toolbar-divider" />
-        <button
-          className="text-button"
-          disabled={user.role === "viewer" || !ready}
-          onClick={() => ai(true)}
-        >
-          <Sparkles size={14} />
-          改写当前段落
-        </button>
+        {!pilot && (
+          <button
+            className="text-button"
+            disabled={user.role === "viewer" || !ready}
+            onClick={() => ai(true)}
+          >
+            <Sparkles size={14} />
+            改写当前段落
+          </button>
+        )}
         <span className="toolbar-note">更改自动同步</span>
       </div>
       {error && (
@@ -243,7 +325,8 @@ function EditorBody({
           </div>
           <h2>{title}</h2>
           <div className="doc-byline">
-            团队共同维护 <span>·</span> 支持同时编辑与本地离线恢复
+            团队共同维护 <span>·</span>{" "}
+            {pilot ? "支持同时编辑与断线重连" : "支持同时编辑与本地离线恢复"}
           </div>
           {!ready && <div className="doc-loading">正在同步最新版本…</div>}
           <EditorContent editor={editor} />

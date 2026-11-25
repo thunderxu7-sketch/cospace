@@ -15,7 +15,11 @@ export type Message = {
   client_id: string;
 };
 export type DocMeta = { id: string; title: string };
+export type WorkspaceMeta = { id: string; name: string };
 export type Workspace = {
+  mode: "demo" | "pilot";
+  workspace: WorkspaceMeta;
+  workspaces: WorkspaceMeta[];
   user: Member;
   members: Member[];
   messages: Message[];
@@ -27,6 +31,8 @@ export type Workspace = {
 export type DocContext = {
   text: string;
   hash: string;
+  savedHash?: string;
+  revision?: number;
   blockIndex?: number;
   selectedText?: string;
 };

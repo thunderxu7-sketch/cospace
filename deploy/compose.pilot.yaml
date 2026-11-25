@@ -1,0 +1,70 @@
+name: cospace-pilot
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    init: true
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: https://${COSPACE_PUBLIC_HOST:?Set the CoSpace hostname}
+      DATABASE_URL: postgresql://cospace:${COSPACE_POSTGRES_PASSWORD:?Set the pilot database password}@db:5432/cospace
+      COSPACE_EMAIL_FROM: ${COSPACE_EMAIL_FROM:?Set the verified sender}
+      COSPACE_EMAIL_API_KEY: ${COSPACE_EMAIL_API_KEY:?Set the Resend sending key}
+      OLLAMA_URL: ${OLLAMA_URL:?Set an Ollama service reachable from the container}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:14b}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4027/api/ready')
+          .then(response => { if (!response.ok) process.exit(1) })
+          .catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: service:app
+    depends_on:
+      app:
+        condition: service_healthy
+        restart: true
+    environment:
+      COSPACE_PUBLIC_HOST: ${COSPACE_PUBLIC_HOST:?Set the CoSpace hostname}
+    volumes:
+      - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cospace
+      POSTGRES_PASSWORD: ${COSPACE_POSTGRES_PASSWORD:?Set the pilot database password}
+      POSTGRES_DB: cospace
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cospace", "-d", "cospace"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:

@@ -7,16 +7,28 @@ export class ApiError extends Error {
     super(message);
   }
 }
+export function websocketUrl(path: string) {
+  const url = new URL(path, window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
 export async function api<T = any>(
   path: string,
-  options: RequestInit = {},
+  {
+    workspaceId,
+    headers,
+    ...options
+  }: RequestInit & {
+    workspaceId?: string;
+  } = {},
 ): Promise<T> {
+  const requestHeaders = new Headers(headers);
+  if (options.body && !requestHeaders.has("Content-Type"))
+    requestHeaders.set("Content-Type", "application/json");
+  if (workspaceId) requestHeaders.set("X-CoSpace-Workspace", workspaceId);
   const response = await fetch("/api" + path, {
     ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
+    headers: requestHeaders,
   });
   const result = await response.json();
   if (!response.ok)

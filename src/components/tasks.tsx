@@ -94,11 +94,18 @@ export default function Tasks({
           <select
             aria-label={"负责人 " + row.original.title}
             disabled={readonly}
-            value={row.original.assignee}
-            onChange={(e) => save(row.original, { assignee: e.target.value })}
+            value={row.original.assignee ?? ""}
+            onChange={(e) =>
+              save(row.original, { assignee: e.target.value || null })
+            }
           >
+            {data.mode === "pilot" && <option value="">未分配</option>}
+            {row.original.assignee &&
+              !data.members.some((m) => m.id === row.original.assignee) && (
+                <option value={row.original.assignee}>已离开工作区</option>
+              )}
             {data.members
-              .filter((m) => m.role === "editor")
+              .filter((m) => m.role !== "viewer")
               .map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -221,6 +228,7 @@ export default function Tasks({
       for (const item of queue) {
         await api("/tasks", {
           method: "POST",
+          workspaceId: data.mode === "pilot" ? data.workspace.id : undefined,
           body: JSON.stringify({
             ...item,
             assignee: data.user.id === "guest" ? "lin" : data.user.id,

@@ -217,7 +217,7 @@ export default function TaskScreen() {
               <TaskField
                 icon="user"
                 label="负责人"
-                value={owner?.name ?? task.assignee}
+                value={owner?.name ?? task.assignee ?? "未分配"}
               />
               <TaskField
                 icon="calendar"

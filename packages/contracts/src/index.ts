@@ -2,7 +2,7 @@ export type Member = {
   id: string;
   name: string;
   color: string;
-  role: "editor" | "viewer";
+  role: "owner" | "editor" | "viewer";
 };
 
 export type TaskStatus = "todo" | "doing" | "done";
@@ -10,7 +10,7 @@ export type TaskStatus = "todo" | "doing" | "done";
 export type Task = {
   id: string;
   title: string;
-  assignee: string;
+  assignee: string | null;
   status: TaskStatus;
   priority: "high" | "medium" | "low";
   due_at: string | null;
@@ -27,10 +27,11 @@ export type Operation = {
     | "create_tasks"
     | "schedule_tasks";
   documentId?: string;
+  documentRevision?: number;
   baseHash?: string;
   blockIndex?: number;
   text?: string;
-  tasks?: { title: string; assignee: string; due_at?: string | null }[];
+  tasks?: ActionItem[];
   schedules?: {
     id: string;
     title?: string;
@@ -39,6 +40,13 @@ export type Operation = {
     start_at: string;
     end_at: string;
   }[];
+};
+
+export type ActionItem = {
+  title: string;
+  assignee: string | null;
+  due_at?: string | null;
+  evidence?: string;
 };
 
 export type Run = {
