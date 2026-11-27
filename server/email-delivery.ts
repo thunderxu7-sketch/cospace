@@ -23,6 +23,12 @@ export function emailConfig() {
   return { apiKey, sender, endpoint };
 }
 
+export function configuredEmail() {
+  if (!process.env.COSPACE_EMAIL_API_KEY && !process.env.COSPACE_EMAIL_FROM)
+    return null;
+  return emailConfig();
+}
+
 type Message = { id: string; to: string; subject: string; text: string };
 
 export async function deliverEmail(

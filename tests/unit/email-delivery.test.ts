@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { deliverEmail, emailConfig } from "../../server/email-delivery";
+import {
+  configuredEmail,
+  deliverEmail,
+  emailConfig,
+} from "../../server/email-delivery";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -58,4 +62,15 @@ it("preserves Resend recipients and idempotency", async () => {
     subject: message.subject,
     text: message.text,
   });
+});
+
+it("allows provisioning without mail but rejects an incomplete sender configuration", () => {
+  vi.stubEnv("COSPACE_EMAIL_FROM", "");
+  vi.stubEnv("COSPACE_EMAIL_API_KEY", "");
+  expect(configuredEmail()).toBeNull();
+  expect(() => emailConfig()).toThrow();
+  vi.stubEnv("COSPACE_EMAIL_API_KEY", "test-key");
+  expect(() => configuredEmail()).toThrow();
+  vi.stubEnv("COSPACE_EMAIL_FROM", "pilot@example.org");
+  expect(configuredEmail()).toEqual(emailConfig());
 });

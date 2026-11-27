@@ -41,7 +41,7 @@ docker compose --env-file .env.pilot -f deploy/compose.pilot.yaml exec app \
 
 ## Render 免费试用
 
-将 CoSpace 部署为单实例 Docker Web Service，Dockerfile 路径为 `./deploy/Dockerfile`，在仓库根目录构建，健康检查路径填 `/api/ready`。镜像通过 Render 提供的端口接收 HTTPS 代理流量，并在启动时执行迁移。默认使用平台提供的 `onrender.com` 地址生成邀请和登录链接。
+将 CoSpace 部署为单实例 Docker Web Service，Dockerfile 路径为 `./deploy/Dockerfile`，在仓库根目录构建，健康检查路径填 `/api/ready`。镜像通过 Render 提供的端口接收 HTTPS 代理流量，并在启动时执行迁移。默认使用平台提供的 `onrender.com` 地址生成邀请和登录链接。发件地址和密钥都尚未设置时，服务仍可启动，`/api/auth/config` 返回 `emailEnabled: false`，登录链接和邀请请求返回 503。已有会话和已发出的有效链接可以继续使用。只设置一项时，启动会报配置错误。
 
 在 Render 中配置托管 PostgreSQL 的 `DATABASE_URL`（启用 TLS）、已验证的 `COSPACE_EMAIL_FROM`、`COSPACE_EMAIL_API_KEY` 和 `COSPACE_GROQ_API_KEY`。试用版启用 Groq 时默认使用 `openai/gpt-oss-20b`。文档原文会发送给 Groq 进行行动项提取。从可信终端使用同一份数据库和邮件配置，另加 `COSPACE_MODE=pilot` 和公网 `APP_ORIGIN`，运行 `npm run pilot:bootstrap` 创建工作区。
 

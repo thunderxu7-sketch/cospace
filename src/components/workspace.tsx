@@ -90,7 +90,8 @@ export default function WorkspaceApp() {
   const [emailLink, setEmailLink] = useState<EmailLink | null>(null);
   const { data: authConfig } = useQuery({
     queryKey: ["auth-config"],
-    queryFn: () => api<{ mode: "demo" | "pilot" }>("/auth/config"),
+    queryFn: () =>
+      api<{ mode: "demo" | "pilot"; emailEnabled: boolean }>("/auth/config"),
     enabled: !data || !!emailLink,
   });
   useEffect(() => {
@@ -203,7 +204,19 @@ export default function WorkspaceApp() {
     return <PilotAccess key={emailLink.token} link={emailLink} />;
   if (error instanceof ApiError && error.status === 401) {
     if (!authConfig) return <Loading />;
-    if (authConfig.mode === "pilot") return <PilotAccess link={null} />;
+    if (authConfig.mode === "pilot") {
+      if (authConfig.emailEnabled) return <PilotAccess link={null} />;
+      return (
+        <div className="login-shell">
+          <section className="login-card">
+            <h1>CoSpace 团队工作区</h1>
+            <p>
+              邮件登录暂未开放。已收到邀请的成员可以通过邮件中的链接加入工作区。
+            </p>
+          </section>
+        </div>
+      );
+    }
     return (
       <Login
         onLogin={() => client.invalidateQueries({ queryKey: ["workspace"] })}

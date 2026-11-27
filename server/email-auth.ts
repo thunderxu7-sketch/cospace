@@ -5,8 +5,7 @@ import { z } from "zod";
 import { appOrigin, demoWorkspace, pilot } from "./config";
 import { pool, sql } from "./db";
 import { digest } from "./domain";
-import { emailConfig, deliverEmail } from "./email-delivery";
-export { emailConfig } from "./email-delivery";
+import { configuredEmail, emailConfig, deliverEmail } from "./email-delivery";
 import { fail, member, newSession, setSession } from "./session";
 
 type Role = "owner" | "editor" | "viewer";
@@ -75,8 +74,10 @@ async function issueLink(
   return { id, token, email, purpose };
 }
 
-async function sendLink(link: Awaited<ReturnType<typeof issueLink>>) {
-  const config = emailConfig();
+async function sendLink(
+  link: Awaited<ReturnType<typeof issueLink>>,
+  config: ReturnType<typeof emailConfig>,
+) {
   const invitation = link.purpose === "invite";
   const url = new URL("/", appOrigin);
   url.hash = new URLSearchParams({ [link.purpose]: link.token }).toString();
@@ -101,7 +102,7 @@ async function sendLink(link: Awaited<ReturnType<typeof issueLink>>) {
 export async function bootstrapWorkspace(rawName: string, rawEmail: string) {
   if (!pilot)
     throw new Error("Workspace bootstrap is only available in pilot mode.");
-  emailConfig();
+  const config = emailConfig();
   const name = nameField.parse(rawName);
   const email = emailAddress.parse(rawEmail);
   const { workspaceId, link } = await transaction(async (db) => {
@@ -140,7 +141,7 @@ export async function bootstrapWorkspace(rawName: string, rawEmail: string) {
       link: await issueLink(db, workspaceId, email, "invite", "owner"),
     };
   });
-  await sendLink(link);
+  await sendLink(link, config);
   return workspaceId;
 }
 
@@ -148,13 +149,16 @@ export function registerEmailAuth(
   app: FastifyInstance,
   closeMemberConnections: (workspaceId: string, userId: string) => void,
 ) {
+  const config = pilot ? configuredEmail() : null;
   app.get("/api/auth/config", { config: { publicAuth: true } }, async () => ({
     mode: pilot ? "pilot" : "demo",
+    emailEnabled: !!config,
   }));
   if (!pilot) return;
 
   app.post("/api/auth/login-link", anonymous, async (req) => {
     const { email } = z.strictObject({ email: emailAddress }).parse(req.body);
+    if (!config) return fail("邮件登录暂未开放。", 503);
     const [workspace] = await sql(
       `SELECT m.workspace_id FROM workspace_members m JOIN users u ON u.id=m.user_id
        WHERE u.email=$1 AND m.revoked_at IS NULL AND m.workspace_id<>$2 ORDER BY m.workspace_id LIMIT 1`,
@@ -165,7 +169,7 @@ export function registerEmailAuth(
         const link = await transaction((db) =>
           issueLink(db, workspace.workspace_id, email, "login", null),
         );
-        await sendLink(link);
+        await sendLink(link, config);
       } catch (error) {
         // The public response is the same for registered and unregistered addresses.
         req.log.warn(
@@ -274,6 +278,9 @@ export function registerEmailAuth(
           role: z.enum(["editor", "viewer"]).default("editor"),
         })
         .parse(req.body);
+      if (member(req).role !== "owner")
+        fail("只有工作区管理员可以邀请成员", 403);
+      if (!config) return fail("邮件邀请暂未开放。", 503);
       const link = await transaction(async (db) => {
         await lockWorkspace(db, req.workspaceId);
         const { rowCount } = await db.query(
@@ -289,7 +296,7 @@ export function registerEmailAuth(
         if (existing) fail("此邮箱已加入工作区", 409);
         return issueLink(db, req.workspaceId, email, "invite", role);
       });
-      await sendLink(link);
+      await sendLink(link, config);
       return reply.code(201).send({ id: link.id });
     },
   );

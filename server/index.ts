@@ -30,7 +30,7 @@ import {
   pilot,
   validateRuntime,
 } from "./config";
-import { emailConfig, registerEmailAuth } from "./email-auth";
+import { registerEmailAuth } from "./email-auth";
 import { requireMigrations } from "./migrate";
 import { aiInfo, generate } from "./ai";
 import { actionItemRun, registerMobileDataRoutes } from "./mobile-data";
@@ -53,7 +53,6 @@ import type {
 } from "../packages/contracts/src/index";
 
 validateRuntime();
-if (pilot) emailConfig();
 const origin = appOrigin;
 const mobileTaskPatch = taskPatch
   .pick({ status: true, version: true })
