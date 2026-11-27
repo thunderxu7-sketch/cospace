@@ -8,7 +8,11 @@ CoSpace 是一个可以实际运行的 AI 团队协作工作台。讨论、协�
 
 ## 邀请制试用
 
-Web 试用版支持邮箱邀请登录、工作区成员权限、多人协作文档、行动项审阅和任务同步。见 [部署与验收](docs/PILOT.md)。
+[打开 CoSpace 公网试用环境](https://cospace-pilot.onrender.com) · [查看数据库连通状态](https://cospace-pilot.onrender.com/api/ready)
+
+Web 试用版使用 Next.js、Fastify、Yjs 和独立的 PostgreSQL。2026 年 11 月 27 日，两个验收账号通过公网共同编辑会议纪要，刷新后读回了双方的修改。从纪要提取的两条建议中选取一条确认，另一名成员实时收到了任务，独立工作区的任务列表保持为空。
+
+本轮验收使用本机测试收件器领取一次性链接，由本机 Ollama 提取行动项。真实邮件送达和托管模型仍待接通。详见[部署与验收](docs/PILOT.md)。
 
 ## 快速启动
 
