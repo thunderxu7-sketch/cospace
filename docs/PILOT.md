@@ -45,7 +45,7 @@ docker compose --env-file .env.pilot -f deploy/compose.pilot.yaml exec app \
 
 在 Render 中配置托管 PostgreSQL 的 `DATABASE_URL`（启用 TLS）、已验证的 `COSPACE_EMAIL_FROM`、`COSPACE_EMAIL_API_KEY` 和 `COSPACE_GROQ_API_KEY`。试用版启用 Groq 时默认使用 `openai/gpt-oss-20b`。文档原文会发送给 Groq 进行行动项提取。从可信终端使用同一份数据库和邮件配置，另加 `COSPACE_MODE=pilot` 和公网 `APP_ORIGIN`，运行 `npm run pilot:bootstrap` 创建工作区。
 
-Render 免费试用模板使用 MailerSend 的试用发件域名。选择 Sandbox，使用控制台分配的域名，将该域名下的纯邮箱地址填入 `COSPACE_EMAIL_FROM`，发送令牌填入 `COSPACE_EMAIL_API_KEY`。运行 `pilot:bootstrap` 的终端也须配置同一地址、令牌和 `COSPACE_EMAIL_API_URL=https://api.mailersend.com/v1/email`。审核前的两个收件人名额用于独立的管理员和成员测试邮箱，审核通过后再邀请团队。使用 Resend 已验证域名时，把服务和引导终端的地址都设置为 `https://api.resend.com/emails`。[MailerSend Sandbox 规则](https://www.mailersend.com/help/sandbox-mode-and-the-professional-trial)
+Render 免费试用模板使用 MailerSend 的试用发件域名。选择 Sandbox，使用控制台分配的域名，将该域名下的纯邮箱地址填入 `COSPACE_EMAIL_FROM`，发送令牌填入 `COSPACE_EMAIL_API_KEY`。运行 `pilot:bootstrap` 的终端也须配置同一地址、令牌和 `COSPACE_EMAIL_API_URL=https://api.mailersend.com/v1/email`。审核前的两个收件人名额用于独立的管理员和成员测试邮箱，使用项目自己的发件域名完成 DNS 验证和账号审核后，再邀请其他团队成员。使用 Resend 已验证域名时，把服务和引导终端的地址都设置为 `https://api.resend.com/emails`。[MailerSend Sandbox 规则](https://www.mailersend.com/help/sandbox-mode-and-the-professional-trial)
 
 ## 两账号与两工作区验收
 
@@ -62,4 +62,12 @@ COSPACE_PILOT_TEST_DATABASE_URL=postgres://... npm run test:pilot
 
 验收覆盖邀请撤销及重复兑换、角色权限、多人编辑和持久化、过期建议拦截、人工修订、重复确认、任务实时更新，以及文档、任务、AI 运行记录和协作票据的工作区隔离。
 
-2026-11-24 本机通过 Caddy HTTPS 和 Ollama `qwen3:14b` 完成整套浏览器验收。用测试库备份恢复到新库后，核对了文档状态及版本、任务负责人、AI 确认回执和工作区归属。邮件走本机测试收件箱，真实邮件投递需在部署域名上验收。
+2026-11-24 本机通过 Caddy HTTPS 和 Ollama `qwen3:14b` 完成整套浏览器验收。用测试库备份恢复到新库后，核对了文档状态及版本、任务负责人、AI 确认回执和工作区归属。该次邮件通过本机测试收件箱领取。
+
+## 2026-11-28 公网验收记录
+
+两个独立测试邮箱分别收到并兑换了登录链接。工作区管理员邀请另一账号担任编辑者，收件人在自己的邮箱中收到邀请，通过邮件加入目标工作区。两名成员通过公网 WebSocket 共同编辑会议纪要，从服务端读回的第 2 版包含双方的修改。
+
+Render 上的 Groq 集成使用 `openai/gpt-oss-20b`，从纪要提取了「整理试用反馈清单」和「复核邀请邮件模板」。确认前任务列表没有新增条目。管理员核对原文，将第一条修订为「整理首轮团队试用反馈清单」，指定负责人并确认。编辑者通过 WebSocket 收到更新。重复确认返回相同回执。在线 PostgreSQL 中核对了文档版本、已确认记录、任务标题、负责人和工作区归属。
+
+切换到另一工作区后，其列表中只有该工作区自己的文档和任务。验收结束后撤回了本轮新增的临时编辑者权限，重新读取账号可用工作区时，原先的权限边界已恢复。
