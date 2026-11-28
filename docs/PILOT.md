@@ -53,7 +53,11 @@ Render 免费试用模板使用 MailerSend 的试用发件域名。选择 Sandbo
 
 Dynu 控制台要求新注册的免费三级域名超过 30 天才可创建 TXT。可在 12 月 28 日注册时刻之后重试，在域名根节点添加 MailerSend 指定的 SPF 值 `v=spf1 include:_spf.mailersend.net ~all`。再到 MailerSend 验证域名并检查账号审核结果。切换发件人时，同时核对发送令牌是否获准使用新域名，以实际收件和链接兑换验收。[MailerSend 域名验证](https://www.mailersend.com/help/how-to-verify-and-authenticate-a-sending-domain)
 
-当前 Render 免费数据库显示的到期日为 2026-12-26。要让公网试用跨过该日期，需提前迁移业务数据并切换数据库连接。
+2026-11-28 起，Render Web Service 连接新加坡 Neon Free 项目 `cospace-pilot` 的 `cospace_pilot` 数据库。正式库使用 PostgreSQL 16、UTF-8 和与原库相同的 `en_US.UTF8` 排序规则。数据库使用直连和 TLS 证书验证。引导工作区或备份当前数据时，使用正式库的连接串。
+
+切换前暂停原库的业务写入，核对了全部 16 张表的数据、87 个字段、41 个约束、27 个索引和事件序列。切换后两个既有账号均可读取各自的工作区。使用公网协作编辑器写入的新文档已从 Neon 读回，另一个工作区的列表中没有该文档。
+
+原 Render 库保留了切换时的数据，平台显示其到期日为 2026-12-26。切换后的写入保存在 Neon。需要回退时，先同步新增数据并重新核对，再更改连接。
 
 ## 两账号与两工作区验收
 

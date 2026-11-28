@@ -10,7 +10,7 @@ CoSpace 是一个可以实际运行的 AI 团队协作工作台。讨论、协�
 
 [打开 CoSpace 公网试用环境](https://cospace-pilot.onrender.com) · [查看数据库连通状态](https://cospace-pilot.onrender.com/api/ready)
 
-Web 试用版使用 Next.js、Fastify、Yjs 和独立的 PostgreSQL。2026 年 11 月 28 日，两个测试邮箱分别收到登录邮件，其中一位成员通过邮件邀请加入了第二个工作区。双方共同编辑会议纪要后，线上 Groq 提取了两条带原文证据的行动项。管理员修订并确认其中一条，编辑者实时收到任务。
+公网试用版运行在 Render，使用 Next.js、Fastify、Yjs 和 Neon PostgreSQL。2026 年 11 月 28 日，两个测试邮箱分别收到登录邮件，其中一位成员通过邮件邀请加入了第二个工作区。双方共同编辑会议纪要后，线上 Groq 提取了两条带原文证据的行动项。管理员修订并确认其中一条，编辑者实时收到任务。
 
 当前使用 MailerSend 的试用域名，两个收件人名额均已用于验收。邀请其他成员前，需要验证项目发件域名并完成账号审核。[部署与验收](docs/PILOT.md) · [MailerSend 域名与收件人规则](https://www.mailersend.com/help/getting-started)
 
