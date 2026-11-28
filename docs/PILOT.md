@@ -47,6 +47,14 @@ docker compose --env-file .env.pilot -f deploy/compose.pilot.yaml exec app \
 
 Render 免费试用模板使用 MailerSend 的试用发件域名。选择 Sandbox，使用控制台分配的域名，将该域名下的纯邮箱地址填入 `COSPACE_EMAIL_FROM`，发送令牌填入 `COSPACE_EMAIL_API_KEY`。运行 `pilot:bootstrap` 的终端也须配置同一地址、令牌和 `COSPACE_EMAIL_API_URL=https://api.mailersend.com/v1/email`。审核前的两个收件人名额用于独立的管理员和成员测试邮箱，使用项目自己的发件域名完成 DNS 验证和账号审核后，再邀请其他团队成员。使用 Resend 已验证域名时，把服务和引导终端的地址都设置为 `https://api.resend.com/emails`。[MailerSend Sandbox 规则](https://www.mailersend.com/help/sandbox-mode-and-the-professional-trial)
 
+### 发件域名和试用期限
+
+2026-11-28 为试用版申请了 `cospace-pilot.ddnsfree.com`。MailerSend 已接受域名进入验证流程。两条 DKIM 记录和退信地址 `mta` 的 CNAME 均已在 Google Public DNS 与 Cloudflare DNS 查到。
+
+Dynu 控制台要求新注册的免费三级域名超过 30 天才可创建 TXT。可在 12 月 28 日注册时刻之后重试，在域名根节点添加 MailerSend 指定的 SPF 值 `v=spf1 include:_spf.mailersend.net ~all`。再到 MailerSend 验证域名并检查账号审核结果。切换发件人时，同时核对发送令牌是否获准使用新域名，以实际收件和链接兑换验收。[MailerSend 域名验证](https://www.mailersend.com/help/how-to-verify-and-authenticate-a-sending-domain)
+
+当前 Render 免费数据库显示的到期日为 2026-12-26。要让公网试用跨过该日期，需提前迁移业务数据并切换数据库连接。
+
 ## 两账号与两工作区验收
 
 准备一个空的临时 PostgreSQL 数据库，以及 Playwright Chromium，运行以下命令。测试会执行迁移并创建两组工作区数据。测试邮箱接收服务监听回环地址。
